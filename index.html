@@ -19,6 +19,7 @@
   p { margin: 0 0 12px; }
   a { color: var(--z3); }
   .muted { color: var(--muted); }
+  .note { font-size: 13px; margin-top: 8px; }
   .nowheel { display: none; padding: 10px 12px; border: 1px solid var(--z1); border-radius: 8px; margin-bottom: 12px; }
   @media (hover: none) { .nowheel { display: block; } }
 
@@ -42,12 +43,15 @@
   .stat { background: var(--panel); border-radius: 10px; padding: 10px 12px; }
   .stat span { display: block; font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; }
   .stat small { color: var(--muted); }
+  .ver { border: 2px solid transparent; }
+  .ver small b { color: var(--text); }
 
   #zonebar { display: flex; height: 14px; border-radius: 7px; overflow: hidden; background: var(--line); }
   #zonebar div { transition: width .15s; }
   .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 6px; font-size: 13px; color: var(--muted); }
-  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
-  #chart { width: 100%; height: auto; display: block; background: var(--panel); border-radius: 10px; }
+  .legend i, .ver i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+  .legend i.dash { width: 14px; height: 0; border-top: 2px dashed; border-radius: 0; vertical-align: 3px; }
+  .chart { width: 100%; height: auto; display: block; background: var(--panel); border-radius: 10px; }
 
   table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
   th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); }
@@ -99,14 +103,35 @@
   <div class="legend" id="legend"></div>
 
   <h2>Last 120 gaps between notches<span id="chartNote"></span></h2>
-  <svg id="chart" viewBox="0 0 600 170" role="img" aria-label="Bar chart of recent gaps between scroll notches"></svg>
-  <p style="margin-top:10px"><button id="reset">Reset</button></p>
+  <svg id="chart" class="chart" viewBox="0 0 600 170" role="img" aria-label="Bar chart of recent gaps between scroll notches, split into batches"></svg>
+  <p class="muted note">Lines split your batches of scrolls (a pause of 100 ms or more starts a new batch). The number over each batch is its median gap in ms.</p>
+  <p><button id="reset">Reset</button></p>
+
+  <h2>Your latest batch in CS2 vs CS:GO</h2>
+  <div class="stats">
+    <div class="stat ver" id="ver0"><span>–</span><small><i style="background:#22c55e"></i>CS2 <b></b></small></div>
+    <div class="stat ver" id="ver1"><span>–</span><small><i style="background:#f97316"></i>CS:GO 128 tick <b></b></small></div>
+    <div class="stat ver" id="ver2"><span>–</span><small><i style="background:#3b82f6"></i>CS:GO 64 tick <b></b></small></div>
+  </div>
+  <p id="fit"></p>
+  <svg class="chart" viewBox="0 0 560 300" role="img" aria-label="Perfect bhop chance vs time between scroll steps for CS2, CS:GO 128 tick and CS:GO 64 tick, with your latest batch marked"><g id="vStatic"></g><g id="vMarker"></g></svg>
+  <div class="legend">
+    <span><i style="background:#f97316"></i>CS:GO 128 tick</span>
+    <span><i style="background:#3b82f6"></i>CS:GO 64 tick</span>
+    <span><i style="background:#22c55e"></i>CS2 perfect</span>
+    <span><i class="dash" style="border-color:#22c55e"></i>CS2 perfect + restored</span>
+    <span><i class="dash" style="border-color:#e6e8ec"></i>your latest batch</span>
+  </div>
+  <p class="muted note">Recreated from the README's <a href="https://github.com/zer0k-z/cs2-movement-issue-bhop/blob/main/bhop_graphs/scroll_rate_comparison.png">scroll speed graph</a>, with CS2 at 256 u/s landings.
+    The dots show a perfectly steady scroll at your latest batch's median pace. The ticks along the bottom are each gap in that batch, with the newest one taller.
+    The percentages above use your actual gaps, so uneven scrolling counts against you.</p>
 
   <h2>How it works</h2>
   <ul>
     <li>CS2 has a <b>15.625 ms jump cooldown</b>. If there's 15.625 ms or less since your last press, the press is ignored, and it still resets the timer. From about 15.87 ms up, every press counts. In between it's a lottery.</li>
     <li>The bhop window is <b>7.8125 ms</b> wide, so with a steady gap your perfect-bhop chance is about <code>7.8125 ÷ gap</code>.</li>
     <li>Aim for about <b>16 ms per notch</b> (50–60 notches a second). Scrolling slightly too slow is better than slightly too fast.</li>
+    <li>In CS:GO the best spacing was 2 ticks: <b>31.25 ms on 64 tick</b> and <b>15.625 ms on 128 tick</b>. Coming from 64 tick, scroll about twice as fast in CS2. Coming from 128 tick, scroll a little slower, because CS2 drops to zero below 15.625 ms instead of tapering off.</li>
     <li>The game timestamps each scroll by the <b>frame</b> it's processed in, so with a frame cap the gap between presses is always a whole number of frames. Pick your fps_max above and the page snaps your scrolls to that frame grid the same way.</li>
   </ul>
   <table>
@@ -134,9 +159,13 @@
 
 <script>
 "use strict";
-var W = 7.8125, LOCK = 15.625, SURE = LOCK * 65 / 64, BREAK = 100, KEEP = 200, SHOW = 120;
+var LOCK = 15.625, SURE = LOCK * 65 / 64, BREAK = 100, KEEP = 200, SHOW = 120;
 // ponytail: real frames run a bit longer than 1000/fps_max (README says "slightly"); 1% is a guess, tune if caps near N×64 get misjudged
 var FLICKER = 1.01;
+// CS2 bhop windows at 256 u/s landings (README appendix): D = ticks spent falling the last 2 units, HW = half window in ticks
+var D = 64 * (256 - Math.sqrt(256 * 256 - 4 * 800)) / 800, HW = 0.25;
+var CS2_PERFECT = (D + HW - D * D / 2 - HW * D) * LOCK; // ~7.84 ms
+var CS2_KEPT = (D + HW - (D * D - HW * HW) / 2) * LOCK;  // ~10.30 ms, perfect + restored
 var ZONES = [
   { name: "Locked out (≤15.625 ms)", color: "var(--z0)" },
   { name: "Lottery (15.63–15.87 ms)", color: "var(--z1)" },
@@ -152,19 +181,47 @@ var VERDICTS = [
   ["Too slow", "Most jumps will miss the bhop window. Scroll a lot faster."]
 ];
 
-// Chance a press gets through the jump cooldown. The server rounds press times to 1/64 tick (0.244 ms),
+function clamp01(x) { return Math.min(1, Math.max(0, x)); }
+// CS2: chance a press gets through the jump cooldown. The server rounds press times to 1/64 tick (0.244 ms),
 // so a gap passes only if it rounds to 65+ units: never at or below 15.625 ms, always from 15.87 ms, linear in between.
-function accept(g) { return g <= LOCK ? 0 : g >= SURE ? 1 : (g - LOCK) / (SURE - LOCK); }
+function accept(g) { return clamp01((g - LOCK) / (SURE - LOCK)); }
 function zoneOf(g) { return g <= LOCK ? 0 : g < SURE ? 1 : g <= 20 ? 2 : g <= 31.25 ? 3 : 4; }
 
-// Gaps as the game sees them. With a frame cap each press is timestamped by the frame it's processed in,
-// so every gap becomes a whole number of frames. Pauses of BREAK ms or more split bursts and aren't counted.
-function gapsFor(times, fps) {
-  var F = fps ? 1000 / fps : 0, out = [];
+// Each game version: its perfect-bhop window (ms) and the chance a press g ms after the previous one counts.
+// CS:GO needed a tick with no press right before the jump tick, so a press counts with chance clamp(g / tick - 1, 0, 1).
+var VERSIONS = [
+  { name: "CS2", color: "#22c55e", win: CS2_PERFECT, accept: accept,
+    fit: "suits CS2." },
+  { name: "CS:GO 128 tick", color: "#f97316", win: 7.8125, accept: function (g) { return clamp01(g / 7.8125 - 1); },
+    fit: "is paced like 128-tick CS:GO, which is too fast for CS2's hard cutoff. Slow down to about 16 ms per notch." },
+  { name: "CS:GO 64 tick", color: "#3b82f6", win: 15.625, accept: function (g) { return clamp01(g / 15.625 - 1); },
+    fit: "is paced like 64-tick CS:GO. For CS2, speed up to about 16 ms per notch." }
+];
+
+// Perfect-bhop chance for a run of gaps: every press that counts opens one window, so window × counted presses ÷ time.
+// For a steady gap this is the README's window ÷ gap (and CS:GO's 1 - 1/T and 1/T).
+function chanceOf(v, gaps) {
+  var sum = 0, acc = 0;
+  gaps.forEach(function (g) { sum += g; acc += v.accept(g); });
+  return acc ? v.win * acc / sum : 0;
+}
+
+// Which version these gaps suit: CS2 unless another is clearly (1+ point) better; -1 if none would count them.
+function bestFit(gaps) {
+  var c = VERSIONS.map(function (v) { return chanceOf(v, gaps); }), best = 0;
+  c.forEach(function (x, i) { if (x > c[best] + 0.01) best = i; });
+  return { chances: c, best: c[best] ? best : -1 };
+}
+
+// Gaps as the game sees them, split into batches wherever you paused for BREAK ms or more.
+// With a frame cap each press is timestamped by the frame it's processed in, so every gap becomes a whole number of frames.
+function batchesFor(times, fps) {
+  var F = fps ? 1000 / fps : 0, out = [], cur = null;
   for (var i = 1; i < times.length; i++) {
     var raw = times[i] - times[i - 1];
-    if (raw >= BREAK) continue;
-    out.push(F ? (Math.ceil(times[i] / F) - Math.ceil(times[i - 1] / F)) * F : raw);
+    if (raw >= BREAK) { cur = null; continue; }
+    if (!cur) out.push(cur = []);
+    cur.push(F ? (Math.ceil(times[i] / F) - Math.ceil(times[i - 1] / F)) * F : raw);
   }
   return out;
 }
@@ -175,17 +232,20 @@ function capInfo(fps) {
   return { F: F, n: n, gap: n * F, lottery: (n - 1) * F * FLICKER > LOCK };
 }
 
+function median(a) {
+  var s = a.slice().sort(function (x, y) { return x - y; }), n = s.length;
+  return n % 2 ? s[(n - 1) / 2] : (s[n / 2 - 1] + s[n / 2]) / 2;
+}
+
 function analyze(gaps) {
   var n = gaps.length;
   if (!n) return null;
-  var sorted = gaps.slice().sort(function (a, b) { return a - b; });
-  var median = n % 2 ? sorted[(n - 1) / 2] : (sorted[n / 2 - 1] + sorted[n / 2]) / 2;
   var sum = 0, acc = 0, zones = [0, 0, 0, 0, 0];
   gaps.forEach(function (g) { sum += g; acc += accept(g); zones[zoneOf(g)]++; });
   return {
-    n: n, median: median,
+    n: n, median: median(gaps),
     perSec: sum ? 1000 * n / sum : 0,
-    perf: acc ? W * acc / sum : 0, // windows are 7.8125 ms wide; each accepted press opens one
+    perf: chanceOf(VERSIONS[0], gaps),
     ignored: 1 - acc / n,
     zones: zones.map(function (c) { return c / n; })
   };
@@ -193,14 +253,18 @@ function analyze(gaps) {
 
 // Self-check against the README's numbers (open the console to see failures).
 (function () {
-  function near(a, b) { return Math.abs(a - b) < 1e-9; }
-  console.assert(near(analyze([16, 16, 16]).perf, 0.48828125), "16 ms should be 48.8%");
-  console.assert(near(analyze([20]).perf, 0.390625), "20 ms should be 39.1%");
-  console.assert(near(analyze([31.25]).perf, 0.25), "31.25 ms should be 25%");
+  function near(a, b, tol) { return Math.abs(a - b) < (tol || 1e-9); }
+  console.assert(near(analyze([16, 16, 16]).perf, 0.490, 0.001), "16 ms should be ~49% (README model, 256 u/s)");
+  console.assert(near(analyze([20]).perf, 0.391, 0.002), "20 ms should be ~39.1%");
+  console.assert(near(analyze([31.25]).perf, 0.25, 0.002), "31.25 ms should be ~25%");
   console.assert(analyze([15.5, 15.5]).perf === 0, "15.5 ms should be 0%");
   console.assert(near(accept(15.7), 0.3072), "15.7 ms should pass about 1 press in 3");
-  console.assert(gapsFor([0, 16, 32, 200, 216], 0).join() === "16,16,16", "raw gaps, pause skipped");
-  console.assert(gapsFor([1, 17.3, 33.6], 250).join() === "16,16", "250 fps snaps to 4-frame gaps");
+  console.assert(near(CS2_KEPT / 16, 0.644, 0.001), "CS2 perfect + restored at 16 ms should be ~64.4%");
+  console.assert(near(chanceOf(VERSIONS[1], [15.625]), 0.5) && near(chanceOf(VERSIONS[2], [31.25]), 0.5), "CS:GO peaks at 50% at 2 ticks");
+  console.assert(near(chanceOf(VERSIONS[2], [23.4375]), 1 / 3) && near(chanceOf(VERSIONS[2], [46.875]), 1 / 3), "CS:GO 1.5 and 3 ticks give 33%");
+  console.assert(bestFit([16.3, 16.3]).best === 0 && bestFit([12, 12]).best === 1 && bestFit([31, 31]).best === 2 && bestFit([5]).best === -1, "best fit per version");
+  console.assert(JSON.stringify(batchesFor([0, 16, 32, 200, 216], 0)) === "[[16,16],[16]]", "pauses split batches");
+  console.assert(JSON.stringify(batchesFor([1, 17.3, 33.6], 250)) === "[[16,16]]", "250 fps snaps to 4-frame gaps");
   console.assert(capInfo(250).gap === 16 && !capInfo(250).lottery, "250 is an ideal cap");
   console.assert(capInfo(256).lottery && capInfo(505).lottery, "256 and 505 are lottery caps");
   console.assert(capInfo(490).n === 8 && capInfo(520).n === 9 && !capInfo(520).lottery, "README's 500 fps table");
@@ -235,7 +299,7 @@ $("fps").addEventListener("change", readFps);
 $("fpsCustom").addEventListener("input", readFps);
 
 function pct(x) { return (100 * x).toFixed(1) + "%"; }
-function frames(k) { return k + (k === 1 ? " frame" : " frames"); }
+function plural(k, word) { return k + " " + word + (k === 1 ? "" : "s"); }
 
 function renderCap() {
   var color, head, body;
@@ -243,7 +307,7 @@ function renderCap() {
     color = ZONES[1].color; head = "Enter your fps_max";
     body = "Use 0 for uncapped, or 64 to 1000. CS2 doesn't allow a cap below 64.";
   } else if (!fps) {
-    color = "var(--line)"; head = "Uncapped";
+    color = "var(--muted)"; head = "Uncapped";
     body = "The page uses your raw scroll timing. The README recommends a cap at a multiple of 62.5, so the same scroll pace always gets the same result.";
   } else {
     // nearest multiple of 62.5 (every one from 125 up makes whole frames exactly 16 ms)
@@ -251,11 +315,11 @@ function renderCap() {
     body = "1 frame = " + c.F.toFixed(3) + " ms. ";
     if (c.lottery) {
       color = ZONES[0].color; head = "Bad cap";
-      body += frames(c.n - 1) + " = " + ((c.n - 1) * c.F).toFixed(2) + " ms sits right at the cooldown, so the same scroll pace sometimes gets through and sometimes gets locked out. " +
-              "The fastest safe rhythm is " + frames(c.n) + " = " + c.gap.toFixed(2) + " ms. Try " + best + " instead.";
+      body += plural(c.n - 1, "frame") + " = " + ((c.n - 1) * c.F).toFixed(2) + " ms sits right at the cooldown, so the same scroll pace sometimes gets through and sometimes gets locked out. " +
+              "The fastest safe rhythm is " + plural(c.n, "frame") + " = " + c.gap.toFixed(2) + " ms. Try " + best + " instead.";
     } else {
       color = ZONES[2].color; head = ideal ? "Ideal cap" : "Consistent cap";
-      body += frames(c.n) + " = " + c.gap.toFixed(2) + " ms always clears the cooldown, for about " + pct(W / c.gap) + " perfect bhops at best." +
+      body += plural(c.n, "frame") + " = " + c.gap.toFixed(2) + " ms always clears the cooldown, for about " + pct(CS2_PERFECT / c.gap) + " perfect bhops at best." +
               (ideal ? "" : " " + best + " would get you to exactly 16 ms.");
     }
   }
@@ -266,11 +330,13 @@ function renderCap() {
 function render() {
   queued = false;
   renderCap();
-  var gaps = gapsFor(times, fps || 0), r = analyze(gaps), g = gaps[gaps.length - 1];
+  var batches = batchesFor(times, fps || 0), gaps = [].concat.apply([], batches), r = analyze(gaps), g = gaps[gaps.length - 1];
+  var badCap = fps && capInfo(fps).lottery;
   $("live").textContent = g !== undefined ? g.toFixed(1) + " ms" : total ? "…" : "Scroll here";
   $("liveSub").textContent = !total ? "Put your mouse over this box and scroll the way you would to bhop." :
-    total + " notches · last gap" + (fps && g !== undefined ? " = " + frames(Math.round(g * fps / 1000)) + " at fps_max " + fps : "");
+    total + " notches · last gap" + (fps && g !== undefined ? " = " + plural(Math.round(g * fps / 1000), "frame") + " at fps_max " + fps : "");
   $("chartNote").textContent = fps ? ", snapped to fps_max " + fps + " frames" : "";
+  renderVersions(batches[batches.length - 1], badCap);
   var v = $("verdict");
   if (!r) {
     v.style.borderLeftColor = "";
@@ -282,7 +348,7 @@ function render() {
   }
   var z = zoneOf(r.median), msg = VERDICTS[z][1];
   if (z >= 2 && r.ignored > 0.1) msg += " But " + pct(r.ignored) + " of your presses would be ignored because your rhythm is uneven. Aim a bit slower.";
-  if (r.ignored > 0.1 && fps && capInfo(fps).lottery) msg += " Your fps_max is in a lottery range, which makes this worse (see above).";
+  if (r.ignored > 0.1 && badCap) msg += " Your fps_max is in a lottery range, which makes this worse (see above).";
   v.style.borderLeftColor = ZONES[z].color;
   v.innerHTML = "<b style='color:" + ZONES[z].color + "'>" + VERDICTS[z][0] + "</b><span>" + msg + "</span> <span class='muted'>(" + r.n + " gaps)</span>";
   $("sMedian").textContent = r.median.toFixed(2);
@@ -290,25 +356,94 @@ function render() {
   $("sPerf").textContent = pct(r.perf);
   $("sIgn").textContent = pct(r.ignored);
   Array.prototype.forEach.call($("zonebar").children, function (d, i) { d.style.width = 100 * r.zones[i] + "%"; });
-  drawChart(gaps.slice(-SHOW));
+  drawChart(batches);
 }
 
-function drawChart(list) {
-  var Wd = 600, H = 170, top = 10, bottom = 150, max = 40, bw = Wd / SHOW;
+function renderVersions(batch, badCap) {
+  var f = batch && bestFit(batch), a = batch && analyze(batch);
+  VERSIONS.forEach(function (v, i) {
+    var el = $("ver" + i), isBest = f && f.best === i;
+    el.querySelector("span").textContent = f ? pct(f.chances[i]) : "–";
+    el.querySelector("b").textContent = isBest ? "· best fit" : "";
+    el.style.borderColor = isBest ? v.color : "transparent";
+  });
+  $("fit").textContent = !f ? "Do a batch of scrolls to see where it lands." :
+    "Your latest batch (" + plural(batch.length, "gap") + ", median " + a.median.toFixed(1) + " ms) " +
+    (f.best < 0 ? "is too fast for every version. Slow down to about 16 ms per notch." :
+     // a good median can still lose to 128 tick when uneven gaps dip under CS2's cutoff
+     f.best === 1 && a.median >= SURE ? "has a good median, but " + pct(a.ignored) + " of its presses dip under CS2's cutoff. 128-tick CS:GO would still count those, but CS2 ignores them. Aim a touch slower so the fast ones clear 15.87 ms." :
+     VERSIONS[f.best].fit) +
+    (badCap && f.best !== 0 ? " Your fps_max makes this worse (see above)." : "");
+  drawVersionMarker(batch, a && a.median);
+}
+
+function drawChart(batches) {
+  var Wd = 600, H = 170, top = 10, bottom = 150, max = 40, bw = Wd / SHOW, list = [];
+  batches.forEach(function (b, bi) { b.forEach(function (g) { list.push([g, bi]); }); });
+  list = list.slice(-SHOW);
   function y(ms) { return bottom - (Math.min(ms, max) / max) * (bottom - top); }
   var s = '<rect x="0" y="' + y(20) + '" width="' + Wd + '" height="' + (y(SURE) - y(20)) + '" fill="#22c55e" opacity=".12"/>';
   [[LOCK, "#ef4444", "15.625"], [20, "#22c55e", "20"], [31.25, "#6b7280", "31.25"]].forEach(function (l) {
     s += '<line x1="0" x2="' + Wd + '" y1="' + y(l[0]) + '" y2="' + y(l[0]) + '" stroke="' + l[1] + '" stroke-dasharray="4 4"/>' +
          '<text x="' + (Wd - 4) + '" y="' + (y(l[0]) - 3) + '" fill="' + l[1] + '" font-size="10" text-anchor="end">' + l[2] + ' ms</text>';
   });
-  list.forEach(function (g, i) {
-    var h = Math.max(bottom - y(g), 2); // keep 0 ms (same-frame) gaps visible
-    s += '<rect x="' + (i * bw + 0.5) + '" y="' + (bottom - h) + '" width="' + (bw - 1) + '" height="' + h + '" fill="' + ZONES[zoneOf(g)].color + '"><title>' + g.toFixed(2) + ' ms</title></rect>';
+  list.forEach(function (p, i) {
+    var h = Math.max(bottom - y(p[0]), 2); // keep 0 ms (same-frame) gaps visible
+    s += '<rect x="' + (i * bw + 0.5) + '" y="' + (bottom - h) + '" width="' + (bw - 1) + '" height="' + h + '" style="fill:' + ZONES[zoneOf(p[0])].color + '"><title>' + p[0].toFixed(2) + ' ms</title></rect>';
   });
+  // a line between batches, and each batch's median gap over it (when there's room)
+  for (var i = 1, start = 0; i <= list.length; i++) {
+    if (i < list.length && list[i][1] === list[start][1]) continue;
+    var m = median(batches[list[start][1]]);
+    if (start) s += '<line x1="' + start * bw + '" x2="' + start * bw + '" y1="' + top + '" y2="' + bottom + '" stroke="#e6e8ec" stroke-opacity=".45"/>';
+    if ((i - start) * bw >= 24) s += '<text x="' + (start + i) / 2 * bw + '" y="22" font-size="10" font-weight="600" text-anchor="middle" style="fill:' + ZONES[zoneOf(m)].color + '">' + m.toFixed(1) + '</text>';
+    start = i;
+  }
   s += '<text x="4" y="' + (H - 4) + '" fill="#8b93a3" font-size="10">older ← → newer (bars capped at ' + max + ' ms)</text>';
   $("chart").innerHTML = s;
 }
 
+// Version graph: the README's "perfect bhop chance vs scroll speed" axes, curves drawn once from the appendix formulas.
+var VG = { w: 560, h: 300, l: 46, r: 14, t: 14, b: 44, xmax: 9 * 7.8125, ymax: 0.75 };
+function vx(ms) { return VG.l + clamp01(ms / VG.xmax) * (VG.w - VG.l - VG.r); }
+function vy(p) { return VG.t + (1 - p / VG.ymax) * (VG.h - VG.t - VG.b); }
+
+function drawVersionGraph() {
+  var s = "", bot = vy(0), i, x;
+  for (i = 0; i <= 7; i++) s += '<line x1="' + VG.l + '" x2="' + (VG.w - VG.r) + '" y1="' + vy(i / 10) + '" y2="' + vy(i / 10) + '" stroke="#2a2f3a"/>' +
+    '<text x="' + (VG.l - 6) + '" y="' + (vy(i / 10) + 4) + '" fill="#8b93a3" font-size="11" text-anchor="end">' + i * 10 + '</text>';
+  for (i = 0; i <= 9; i++) {
+    x = vx(i * 7.8125);
+    s += '<line x1="' + x + '" x2="' + x + '" y1="' + VG.t + '" y2="' + bot + '" stroke="#2a2f3a"/>' +
+      '<text x="' + x + '" y="' + (bot + 16) + '" fill="#8b93a3" font-size="11" text-anchor="middle">' + (i ? (i * 7.8125).toFixed(1) : 0) + '</text>';
+  }
+  s += '<text x="' + vx(VG.xmax / 2) + '" y="' + (VG.h - 6) + '" fill="#8b93a3" font-size="11" text-anchor="middle">time between scroll steps (ms)</text>' +
+    '<text transform="translate(14 ' + vy(VG.ymax / 2) + ') rotate(-90)" fill="#8b93a3" font-size="11" text-anchor="middle">perfect bhop chance (%)</text>';
+  [VERSIONS[1], VERSIONS[2], { color: "#22c55e", win: CS2_KEPT, accept: accept, dash: true }, VERSIONS[0]].forEach(function (v) {
+    for (var k = 0, pts = []; k <= 1125; k++) pts.push(vx(k / 16).toFixed(1) + "," + vy(chanceOf(v, [k / 16])).toFixed(1));
+    s += '<polyline points="' + pts.join(" ") + '" fill="none" stroke="' + v.color + '" stroke-width="2.5"' + (v.dash ? ' stroke-dasharray="6 5"' : "") + '/>';
+  });
+  $("vStatic").innerHTML = s;
+}
+
+function drawVersionMarker(batch, m) {
+  var s = "", bot = vy(0);
+  if (batch) {
+    var x = vx(m), right = x > vx(VG.xmax * 0.65);
+    batch.forEach(function (g, i) { // one tick per gap in the batch; the newest is taller and brighter
+      var last = i === batch.length - 1, gx = vx(g);
+      s += '<line x1="' + gx + '" x2="' + gx + '" y1="' + (bot - (last ? 14 : 8)) + '" y2="' + bot + '" stroke="#e6e8ec" stroke-opacity="' + (last ? 1 : 0.5) + '"/>';
+    });
+    s += '<line x1="' + x + '" x2="' + x + '" y1="' + VG.t + '" y2="' + bot + '" stroke="#e6e8ec" stroke-dasharray="3 3"/>';
+    VERSIONS.slice().reverse().forEach(function (v) { // CS2 drawn last so it sits on top
+      s += '<circle cx="' + x + '" cy="' + vy(chanceOf(v, [m])) + '" r="5" fill="' + v.color + '" stroke="#181b22" stroke-width="2"/>';
+    });
+    s += '<text x="' + (right ? x - 6 : x + 6) + '" y="' + (VG.t + 12) + '" fill="#e6e8ec" font-size="12" text-anchor="' + (right ? "end" : "start") + '">latest batch: ' + m.toFixed(1) + " ms" + (m > VG.xmax ? " →" : "") + "</text>";
+  }
+  $("vMarker").innerHTML = s;
+}
+
+drawVersionGraph();
 readFps(); // sync with any value the browser restored on reload
 
 // Smallest tick the browser's clock reports (timers are rounded for security).
