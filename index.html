@@ -22,6 +22,11 @@
   .nowheel { display: none; padding: 10px 12px; border: 1px solid var(--z1); border-radius: 8px; margin-bottom: 12px; }
   @media (hover: none) { .nowheel { display: block; } }
 
+  .fps { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 16px; }
+  .fps label { font-weight: 600; }
+  select, input { font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; }
+  #fpsCustom { width: 120px; }
+
   #pad {
     height: 200px; margin: 16px 0; border: 2px dashed var(--line); border-radius: 12px; background: var(--panel);
     display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
@@ -30,7 +35,8 @@
   #pad:hover { border-color: var(--muted); }
   #live { font-size: 44px; font-weight: 700; font-variant-numeric: tabular-nums; }
 
-  #verdict { padding: 14px 16px; border-radius: 10px; background: var(--panel); border-left: 6px solid var(--line); }
+  #verdict, #capInfo { padding: 10px 16px; border-radius: 10px; background: var(--panel); border-left: 6px solid var(--line); }
+  #capInfo { margin: 10px 0 0; }
   #verdict b { display: block; font-size: 22px; }
   .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 12px 0; }
   .stat { background: var(--panel); border-radius: 10px; padding: 10px 12px; }
@@ -59,6 +65,22 @@
     <a href="https://github.com/zer0k-z/cs2-movement-issue-bhop">zer0k-z/cs2-movement-issue-bhop</a>.</p>
   <p class="nowheel">This test needs a mouse with a scroll wheel. It won't work with touch screens.</p>
 
+  <div class="fps">
+    <label for="fps">Your fps_max</label>
+    <select id="fps">
+      <option value="0">0 / uncapped (raw timing)</option>
+      <option value="125">125 (2 frames = 16 ms)</option>
+      <option value="187.5">187.5 (3 frames = 16 ms)</option>
+      <option value="250">250 (4 frames = 16 ms)</option>
+      <option value="312.5">312.5 (5 frames = 16 ms)</option>
+      <option value="375">375 (6 frames = 16 ms)</option>
+      <option value="500">500 (8 frames = 16 ms)</option>
+      <option value="custom">Custom…</option>
+    </select>
+    <input id="fpsCustom" type="number" min="64" max="1000" step="any" inputmode="decimal" placeholder="e.g. 400" aria-label="Custom fps_max" hidden>
+  </div>
+  <p id="capInfo"></p>
+
   <div id="pad">
     <div id="live">Scroll here</div>
     <div class="muted" id="liveSub">Put your mouse over this box and scroll the way you would to bhop.</div>
@@ -76,19 +98,21 @@
   <div id="zonebar"></div>
   <div class="legend" id="legend"></div>
 
-  <h2>Last 120 gaps between notches</h2>
+  <h2>Last 120 gaps between notches<span id="chartNote"></span></h2>
   <svg id="chart" viewBox="0 0 600 170" role="img" aria-label="Bar chart of recent gaps between scroll notches"></svg>
   <p style="margin-top:10px"><button id="reset">Reset</button></p>
 
   <h2>How it works</h2>
   <ul>
-    <li>CS2 has a <b>15.625 ms jump cooldown</b>. If there's 15.625 ms or less since your last press, the press is ignored, and it still resets the timer. Above about 15.9 ms, every press counts. In between it's a lottery.</li>
+    <li>CS2 has a <b>15.625 ms jump cooldown</b>. If there's 15.625 ms or less since your last press, the press is ignored, and it still resets the timer. From about 15.87 ms up, every press counts. In between it's a lottery.</li>
     <li>The bhop window is <b>7.8125 ms</b> wide, so with a steady gap your perfect-bhop chance is about <code>7.8125 ÷ gap</code>.</li>
     <li>Aim for about <b>16 ms per notch</b> (50–60 notches a second). Scrolling slightly too slow is better than slightly too fast.</li>
+    <li>The game timestamps each scroll by the <b>frame</b> it's processed in, so with a frame cap the gap between presses is always a whole number of frames. Pick your fps_max above and the page snaps your scrolls to that frame grid the same way.</li>
   </ul>
   <table>
     <tr><th>Gap between notches</th><th>Notches / s</th><th>Perfect bhops (README, 256 u/s fall)</th></tr>
     <tr><td>15.5 ms</td><td>64.5</td><td>0.0%, all ignored</td></tr>
+    <tr><td>15.7 ms</td><td>63.7</td><td>16.1%, lottery</td></tr>
     <tr><td>16 ms</td><td>62.5</td><td>48.8%</td></tr>
     <tr><td>17 ms</td><td>58.8</td><td>46.2%</td></tr>
     <tr><td>20 ms</td><td>50</td><td>39.1%</td></tr>
@@ -97,7 +121,7 @@
 
   <h2>Other tips from the README</h2>
   <ul>
-    <li>Set <code>fps_max</code> to a multiple of 62.5 (125, 250, 500…) or slightly below it.</li>
+    <li>Set <code>fps_max</code> to a multiple of 62.5 (125, 250, 500…) or slightly below it. Avoid the range just above it, up to a little past the next multiple of 64 (for example 253–256 or 505–512).</li>
     <li>Don't press or release movement keys right at landing. Finish strafes before you touch down, or after the jump.</li>
   </ul>
 
@@ -110,11 +134,13 @@
 
 <script>
 "use strict";
-var W = 7.8125, LOCK = 15.625, SURE = 15.9, BREAK = 100, KEEP = 200, SHOW = 120;
+var W = 7.8125, LOCK = 15.625, SURE = LOCK * 65 / 64, BREAK = 100, KEEP = 200, SHOW = 120;
+// ponytail: real frames run a bit longer than 1000/fps_max (README says "slightly"); 1% is a guess, tune if caps near N×64 get misjudged
+var FLICKER = 1.01;
 var ZONES = [
   { name: "Locked out (≤15.625 ms)", color: "var(--z0)" },
-  { name: "Lottery (15.6–15.9 ms)", color: "var(--z1)" },
-  { name: "Ideal (15.9–20 ms)", color: "var(--z2)" },
+  { name: "Lottery (15.63–15.87 ms)", color: "var(--z1)" },
+  { name: "Ideal (15.87–20 ms)", color: "var(--z2)" },
   { name: "Slow (20–31 ms)", color: "var(--z3)" },
   { name: "Too slow (>31 ms)", color: "var(--z4)" }
 ];
@@ -126,9 +152,28 @@ var VERDICTS = [
   ["Too slow", "Most jumps will miss the bhop window. Scroll a lot faster."]
 ];
 
-// Chance a press gets through the jump cooldown: 0 at or below 15.625 ms, 1 from ~15.9 ms, linear in the lottery zone.
+// Chance a press gets through the jump cooldown. The server rounds press times to 1/64 tick (0.244 ms),
+// so a gap passes only if it rounds to 65+ units: never at or below 15.625 ms, always from 15.87 ms, linear in between.
 function accept(g) { return g <= LOCK ? 0 : g >= SURE ? 1 : (g - LOCK) / (SURE - LOCK); }
 function zoneOf(g) { return g <= LOCK ? 0 : g < SURE ? 1 : g <= 20 ? 2 : g <= 31.25 ? 3 : 4; }
+
+// Gaps as the game sees them. With a frame cap each press is timestamped by the frame it's processed in,
+// so every gap becomes a whole number of frames. Pauses of BREAK ms or more split bursts and aren't counted.
+function gapsFor(times, fps) {
+  var F = fps ? 1000 / fps : 0, out = [];
+  for (var i = 1; i < times.length; i++) {
+    var raw = times[i] - times[i - 1];
+    if (raw >= BREAK) continue;
+    out.push(F ? (Math.ceil(times[i] / F) - Math.ceil(times[i - 1] / F)) * F : raw);
+  }
+  return out;
+}
+
+// Fewest frames that always clear the cooldown at this cap, and whether one frame fewer can land in the lottery.
+function capInfo(fps) {
+  var F = 1000 / fps, n = Math.ceil(SURE / F);
+  return { F: F, n: n, gap: n * F, lottery: (n - 1) * F * FLICKER > LOCK };
+}
 
 function analyze(gaps) {
   var n = gaps.length;
@@ -139,25 +184,30 @@ function analyze(gaps) {
   gaps.forEach(function (g) { sum += g; acc += accept(g); zones[zoneOf(g)]++; });
   return {
     n: n, median: median,
-    perSec: 1000 * n / sum,
-    perf: W * acc / sum, // windows are 7.8125 ms wide; each accepted press opens one
+    perSec: sum ? 1000 * n / sum : 0,
+    perf: acc ? W * acc / sum : 0, // windows are 7.8125 ms wide; each accepted press opens one
     ignored: 1 - acc / n,
     zones: zones.map(function (c) { return c / n; })
   };
 }
 
-// Self-check against the README's model numbers (open the console to see failures).
+// Self-check against the README's numbers (open the console to see failures).
 (function () {
   function near(a, b) { return Math.abs(a - b) < 1e-9; }
   console.assert(near(analyze([16, 16, 16]).perf, 0.48828125), "16 ms should be 48.8%");
   console.assert(near(analyze([20]).perf, 0.390625), "20 ms should be 39.1%");
   console.assert(near(analyze([31.25]).perf, 0.25), "31.25 ms should be 25%");
   console.assert(analyze([15.5, 15.5]).perf === 0, "15.5 ms should be 0%");
-  console.assert(accept(15.7) > 0 && accept(15.7) < 1, "15.7 ms should be a lottery");
+  console.assert(near(accept(15.7), 0.3072), "15.7 ms should pass about 1 press in 3");
+  console.assert(gapsFor([0, 16, 32, 200, 216], 0).join() === "16,16,16", "raw gaps, pause skipped");
+  console.assert(gapsFor([1, 17.3, 33.6], 250).join() === "16,16", "250 fps snaps to 4-frame gaps");
+  console.assert(capInfo(250).gap === 16 && !capInfo(250).lottery, "250 is an ideal cap");
+  console.assert(capInfo(256).lottery && capInfo(505).lottery, "256 and 505 are lottery caps");
+  console.assert(capInfo(490).n === 8 && capInfo(520).n === 9 && !capInfo(520).lottery, "README's 500 fps table");
 })();
 
 var $ = function (id) { return document.getElementById(id); };
-var pad = $("pad"), gaps = [], last = null, total = 0, queued = false;
+var pad = $("pad"), times = [], total = 0, fps = 0, queued = false;
 
 $("legend").innerHTML = ZONES.map(function (z) { return '<span><i style="background:' + z.color + '"></i>' + z.name + "</span>"; }).join("");
 $("zonebar").innerHTML = ZONES.map(function (z) { return '<div style="width:0;background:' + z.color + '"></div>'; }).join("");
@@ -165,27 +215,62 @@ $("zonebar").innerHTML = ZONES.map(function (z) { return '<div style="width:0;ba
 pad.addEventListener("wheel", function (e) {
   e.preventDefault();
   if (!e.deltaY) return; // ignore horizontal tilt
-  var t = e.timeStamp || performance.now();
-  if (last !== null && t - last < BREAK) {
-    gaps.push(t - last);
-    if (gaps.length > KEEP) gaps.shift();
-  }
-  last = t;
+  times.push(e.timeStamp || performance.now());
+  if (times.length > KEEP + 1) times.shift();
   total++;
   if (!queued) { queued = true; requestAnimationFrame(render); } // keep the handler cheap so wheel events aren't delayed
 }, { passive: false });
 
 $("reset").addEventListener("click", function () {
-  gaps = []; last = null; total = 0; render();
+  times = []; total = 0; render();
 });
 
+function readFps() {
+  var custom = $("fps").value === "custom", v = custom ? $("fpsCustom").value : $("fps").value, f = Number(v);
+  $("fpsCustom").hidden = !custom;
+  fps = v !== "" && (f === 0 || (f >= 64 && f <= 1000)) ? f : null; // null = invalid custom value; CS2 won't cap below 64
+  render();
+}
+$("fps").addEventListener("change", readFps);
+$("fpsCustom").addEventListener("input", readFps);
+
 function pct(x) { return (100 * x).toFixed(1) + "%"; }
+function frames(k) { return k + (k === 1 ? " frame" : " frames"); }
+
+function renderCap() {
+  var color, head, body;
+  if (fps === null) {
+    color = ZONES[1].color; head = "Enter your fps_max";
+    body = "Use 0 for uncapped, or 64 to 1000. CS2 doesn't allow a cap below 64.";
+  } else if (!fps) {
+    color = "var(--line)"; head = "Uncapped";
+    body = "The page uses your raw scroll timing. The README recommends a cap at a multiple of 62.5, so the same scroll pace always gets the same result.";
+  } else {
+    // nearest multiple of 62.5 (every one from 125 up makes whole frames exactly 16 ms)
+    var c = capInfo(fps), best = Math.max(125, Math.round(fps / 62.5) * 62.5), ideal = Math.abs(c.gap - 16) < 1e-6;
+    body = "1 frame = " + c.F.toFixed(3) + " ms. ";
+    if (c.lottery) {
+      color = ZONES[0].color; head = "Bad cap";
+      body += frames(c.n - 1) + " = " + ((c.n - 1) * c.F).toFixed(2) + " ms sits right at the cooldown, so the same scroll pace sometimes gets through and sometimes gets locked out. " +
+              "The fastest safe rhythm is " + frames(c.n) + " = " + c.gap.toFixed(2) + " ms. Try " + best + " instead.";
+    } else {
+      color = ZONES[2].color; head = ideal ? "Ideal cap" : "Consistent cap";
+      body += frames(c.n) + " = " + c.gap.toFixed(2) + " ms always clears the cooldown, for about " + pct(W / c.gap) + " perfect bhops at best." +
+              (ideal ? "" : " " + best + " would get you to exactly 16 ms.");
+    }
+  }
+  $("capInfo").style.borderLeftColor = color;
+  $("capInfo").innerHTML = "<b style='color:" + color + "'>" + head + ".</b> " + body;
+}
 
 function render() {
   queued = false;
-  var r = analyze(gaps), g = gaps[gaps.length - 1];
-  $("live").textContent = g ? g.toFixed(1) + " ms" : total ? "…" : "Scroll here";
-  $("liveSub").textContent = total ? total + " notches · last gap" : "Put your mouse over this box and scroll the way you would to bhop.";
+  renderCap();
+  var gaps = gapsFor(times, fps || 0), r = analyze(gaps), g = gaps[gaps.length - 1];
+  $("live").textContent = g !== undefined ? g.toFixed(1) + " ms" : total ? "…" : "Scroll here";
+  $("liveSub").textContent = !total ? "Put your mouse over this box and scroll the way you would to bhop." :
+    total + " notches · last gap" + (fps && g !== undefined ? " = " + frames(Math.round(g * fps / 1000)) + " at fps_max " + fps : "");
+  $("chartNote").textContent = fps ? ", snapped to fps_max " + fps + " frames" : "";
   var v = $("verdict");
   if (!r) {
     v.style.borderLeftColor = "";
@@ -197,10 +282,11 @@ function render() {
   }
   var z = zoneOf(r.median), msg = VERDICTS[z][1];
   if (z >= 2 && r.ignored > 0.1) msg += " But " + pct(r.ignored) + " of your presses would be ignored because your rhythm is uneven. Aim a bit slower.";
+  if (r.ignored > 0.1 && fps && capInfo(fps).lottery) msg += " Your fps_max is in a lottery range, which makes this worse (see above).";
   v.style.borderLeftColor = ZONES[z].color;
   v.innerHTML = "<b style='color:" + ZONES[z].color + "'>" + VERDICTS[z][0] + "</b><span>" + msg + "</span> <span class='muted'>(" + r.n + " gaps)</span>";
   $("sMedian").textContent = r.median.toFixed(2);
-  $("sRate").textContent = r.perSec.toFixed(1);
+  $("sRate").textContent = r.perSec ? r.perSec.toFixed(1) : "–";
   $("sPerf").textContent = pct(r.perf);
   $("sIgn").textContent = pct(r.ignored);
   Array.prototype.forEach.call($("zonebar").children, function (d, i) { d.style.width = 100 * r.zones[i] + "%"; });
@@ -216,11 +302,14 @@ function drawChart(list) {
          '<text x="' + (Wd - 4) + '" y="' + (y(l[0]) - 3) + '" fill="' + l[1] + '" font-size="10" text-anchor="end">' + l[2] + ' ms</text>';
   });
   list.forEach(function (g, i) {
-    s += '<rect x="' + (i * bw + 0.5) + '" y="' + y(g) + '" width="' + (bw - 1) + '" height="' + (bottom - y(g)) + '" fill="' + ZONES[zoneOf(g)].color + '"><title>' + g.toFixed(2) + ' ms</title></rect>';
+    var h = Math.max(bottom - y(g), 2); // keep 0 ms (same-frame) gaps visible
+    s += '<rect x="' + (i * bw + 0.5) + '" y="' + (bottom - h) + '" width="' + (bw - 1) + '" height="' + h + '" fill="' + ZONES[zoneOf(g)].color + '"><title>' + g.toFixed(2) + ' ms</title></rect>';
   });
   s += '<text x="4" y="' + (H - 4) + '" fill="#8b93a3" font-size="10">older ← → newer (bars capped at ' + max + ' ms)</text>';
   $("chart").innerHTML = s;
 }
+
+readFps(); // sync with any value the browser restored on reload
 
 // Smallest tick the browser's clock reports (timers are rounded for security).
 (function () {
